@@ -1,12 +1,16 @@
+# -----------------------------
+# main.py
+# -----------------------------
 import cv2
 from datetime import datetime
 from pretrained_fr import SecureFaceRecognition
 
-# Initialize system
+# Initialize the secure face recognition system
 face_recognition = SecureFaceRecognition()
 face_recognition.load_cache()
 face_recognition.list_identities()
 
+# Start webcam capture
 cap = cv2.VideoCapture(0)
 cv2.namedWindow("Face Recognition")
 
@@ -31,12 +35,10 @@ while True:
         print(f"📏 Similarity score: {dist:.4f}")
 
         if identity_info:
-            print(identity_info)
             identity, expiry = identity_info
             if expiry == "resident":
                 visa_status = "Resident"
             else:
-                # Check if expiry is a valid string and handle accordingly
                 if isinstance(expiry, str):
                     try:
                         expiry_dt = datetime.fromisoformat(expiry)
@@ -47,25 +49,8 @@ while True:
                 else:
                     visa_status = "Unknown Expiry"
                     print(f"⚠️ Expiry information for {identity} is not valid.")
-                
-                text = f"{identity} - {visa_status}"
-        # else:
-        #     text = "Unknown"
-        #     print("🤖 Unknown face detected.")
-        #     name = input("👉 Enter name (leave blank to skip): ").strip()
-        #     if name:
-        #         is_resident = input("🏠 Is this person a resident? (y/n): ").strip().lower() == 'y'
-        #         if is_resident:
-        #             expiry = "resident"
-        #         else:
-        #             try:
-        #                 minutes = int(input("⏱️ Enter visa duration in minutes: "))
-        #                 expiry = (datetime.now() + timedelta(minutes=minutes)).isoformat()
-        #             except ValueError:
-        #                 print("⚠️ Invalid input. Skipping this face.")
-        #                 continue
-        #         face_recognition.add_embedding(np.array(embedding, dtype=np.float32), (name, expiry))
-        #         text = f"{name} - {'Resident' if is_resident else 'Valid Visa'}"
+
+            text = f"{identity} - {visa_status}"
 
         # Draw face box and identity
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)

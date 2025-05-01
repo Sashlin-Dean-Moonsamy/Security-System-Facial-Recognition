@@ -1,13 +1,22 @@
 # -----------------------------
-# fr.py
+# untrained_fr.py
 # -----------------------------
 import numpy as np
 import cv2
 import os
 
 class FaceRecognition:
+    """
+    Lightweight face recognition using a custom convolutional network built from scratch in NumPy.
+
+    Attributes:
+        embeddings_cache (list): Stores (embedding, identity, visa_expiry).
+        threshold (float): Distance threshold for recognition.
+        kernels (ndarray): Convolution kernels.
+        fc_weights (ndarray): Fully connected layer weights for final embedding.
+    """
     def __init__(self, threshold=0.6):
-        self.embeddings_cache = []  # Stores (embedding, identity, visa_expiry)
+        self.embeddings_cache = []
         self.threshold = threshold
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
@@ -22,11 +31,11 @@ class FaceRecognition:
         pooled_output_size = conv_output_size // 2
         self.flat_dim = self.num_filters * pooled_output_size * pooled_output_size
 
-        # Load or initialize model weights
         self.kernels = self.load_or_init(self.kernels_path, (self.num_filters, self.kernel_size, self.kernel_size))
         self.fc_weights = self.load_or_init(self.fc_weights_path, (128, self.flat_dim))
 
     def load_or_init(self, path, shape):
+        """Load weights from file if they exist, else initialize randomly."""
         if os.path.exists(path):
             print(f"🔁 Loaded model weights from {path}")
             return np.load(path)
@@ -37,6 +46,7 @@ class FaceRecognition:
             return weights
 
     def detect_face(self, frame):
+        """Detect the largest face in a frame using Haar cascade."""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
         if len(faces) == 0:
@@ -46,18 +56,25 @@ class FaceRecognition:
         return frame[y:y+h, x:x+w], (x, y, w, h)
 
     def preprocess_frame(self, frame):
+        """Convert to grayscale, resize to 64x64, and normalize."""
         gray_frame = self.to_grayscale(frame)
         resized = self.resize_frame(gray_frame, (64, 64))
         normalized = resized / 255.0
         return normalized
 
     def to_grayscale(self, frame):
+        """Convert RGB frame to grayscale using luminance-preserving formula."""
         return np.dot(frame[...,:3], [0.2989, 0.5870, 0.1140])
 
     def resize_frame(self, frame, target_size):
+        """Resize image to target dimensions using interpolation."""
         return cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
 
     def embed_face(self, face_image):
+        """
+        Pass face image through convolution + ReLU + max-pooling layers
+        followed by a fully connected layer to produce a 128-dim embedding.
+        """
         if face_image.shape != (64, 64):
             raise ValueError("Input image must be 64x64")
 
@@ -84,6 +101,7 @@ class FaceRecognition:
         return fc_output if norm == 0 else fc_output / norm
 
     def find_match(self, embedding):
+        """Find best match in the cache by computing Euclidean distance."""
         min_dist = np.inf
         match_identity = None
         expiry = None
@@ -97,11 +115,13 @@ class FaceRecognition:
         return match_identity, min_dist, expiry
 
     def add_embedding(self, embedding, identity_info):
+        """Add an embedding to the cache along with identity and visa status."""
         identity, valid_until = identity_info
         self.embeddings_cache.append((embedding, identity.strip(), valid_until))
         print(f"✅ Added identity: {identity} (visa: {valid_until})")
 
     def save_cache(self, filename='embeddings.npz'):
+        """Save embeddings, identities, and expiries to a .npz file."""
         embeddings = [e for e, _, _ in self.embeddings_cache]
         identities = [i for _, i, _ in self.embeddings_cache]
         expiries = [v for _, _, v in self.embeddings_cache]
@@ -111,6 +131,7 @@ class FaceRecognition:
         print(f"💾 Saved {len(embeddings)} face(s) to cache.")
 
     def load_cache(self, filename='embeddings.npz'):
+        """Load face data from .npz file if it exists."""
         if os.path.exists(filename):
             data = np.load(filename, allow_pickle=True)
             embeddings = data['embeddings']
@@ -122,5 +143,6 @@ class FaceRecognition:
             print("🚫 No cache file found.")
 
     def list_identities(self):
+        """Display all unique identities in the current cache."""
         unique_names = list(set([id for _, id, _ in self.embeddings_cache]))
         print(f"🧠 Cached identities: {', '.join(unique_names) if unique_names else 'None'}")
