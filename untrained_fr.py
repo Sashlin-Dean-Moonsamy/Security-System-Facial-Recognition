@@ -51,9 +51,8 @@ class FaceRecognition:
         faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
         if len(faces) == 0:
             return None, (0, 0, 0, 0)
-        largest_face = max(faces, key=lambda rect: rect[2] * rect[3])
-        x, y, w, h = largest_face
-        return frame[y:y+h, x:x+w], (x, y, w, h)
+        
+        return faces
 
     def preprocess_frame(self, frame):
         """Convert to grayscale, resize to 64x64, and normalize."""
