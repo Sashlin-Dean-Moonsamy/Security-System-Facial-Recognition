@@ -1,6 +1,3 @@
-# -----------------------------
-# pretrained_fr.py
-# -----------------------------
 import cv2
 import numpy as np
 import os
@@ -13,15 +10,9 @@ from cryptography.fernet import Fernet
 class SecureFaceRecognition:
     """
     A secure face recognition system using DeepFace (FaceNet model) for face embedding and Fernet for encrypted embedding storage.
-
-    Attributes:
-        threshold (float): Cosine similarity threshold for face matching.
-        cache_file (str): File path to store embeddings cache.
-        key_file (str): File path to store encryption key.
-        cipher_suite (Fernet): Encryption/decryption utility.
-        model (object): DeepFace FaceNet model instance.
-        embeddings_cache (list): In-memory cache of [identity, [(encrypted_embedding, expiry)]] pairs.
+    The class uses DeepFace's built-in face detection model (MTCNN) for more accurate face detection.
     """
+
     def __init__(self, threshold=0.6, cache_file="embeddings.npz", key_file="fernet.key"):
         self.threshold = threshold
         self.cache_file = cache_file
@@ -29,20 +20,32 @@ class SecureFaceRecognition:
 
         self.key = self.load_or_create_key()
         self.cipher_suite = Fernet(self.key)
-        self.model = DeepFace.build_model("Facenet")
+        self.model = DeepFace.build_model("Facenet")  # Load FaceNet model
         self.embeddings_cache = []
         self.load_cache()
 
-    def detect_face(self, frame):
-        """Detect the largest face in the given frame using Haar cascades."""
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
-        if len(faces) == 0:
-            return None, (0, 0, 0, 0)
-        largest_face = max(faces, key=lambda rect: rect[2] * rect[3])
-        x, y, w, h = largest_face
-        return frame[y:y + h, x:x + w], (x, y, w, h)
+    def detect_faces(self, frame):
+        """
+        Detect all faces in the frame using DeepFace's built-in face detector (MTCNN).
+        Returns a list of all faces detected in the frame.
+        """
+        try:
+            # Use DeepFace's face detection model (MTCNN) to detect all faces in the frame
+            detected_faces = DeepFace.detectFace(frame, detector_backend='mtcnn', enforce_detection=False)
+
+            if len(detected_faces) == 0:
+                return []
+
+            # Each face is represented as a bounding box [x, y, w, h]
+            faces_info = []
+            for face in detected_faces:
+                x, y, w, h = face
+                faces_info.append((frame[y:y+h, x:x+w], (x, y, w, h)))
+
+            return faces_info
+        except Exception as e:
+            print(f"Error during face detection: {e}")
+            return []
 
     def preprocess_frame(self, face_img):
         """Resize and normalize a face image for embedding."""
