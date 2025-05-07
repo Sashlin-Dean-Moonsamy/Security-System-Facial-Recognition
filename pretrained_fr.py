@@ -5,12 +5,14 @@ import numpy as np
 from deepface import DeepFace
 from sklearn.metrics.pairwise import cosine_similarity
 from cryptography.fernet import Fernet
+from datetime import datetime
 
 
 class SecureFaceRecognition:
     """
-    Secure face recognition using DeepFace (FaceNet) for embeddings
-    and Fernet for encrypted embedding storage.
+    Secure face recognition using DeepFace (FaceNet) for embeddings,
+    and Fernet for encrypted embedding storage. It distinguishes residents
+    from visa holders and checks visa expiry status.
     """
 
     def __init__(self, threshold=0.6, cache_file="embeddings.npz", key_file="fernet.key"):
@@ -27,21 +29,19 @@ class SecureFaceRecognition:
 
     def detect_faces(self, frame):
         """
-        Detect faces in a frame using MTCNN via DeepFace.
+        Detect faces in a frame using DeepFace (MTCNN).
         Returns a list of (face image, bounding box) tuples.
         """
         try:
             detected_faces = DeepFace.extract_faces(
                 frame, detector_backend='mtcnn', enforce_detection=False
             )
-
             faces_info = []
             for face in detected_faces:
                 region = face['facial_area']
                 x, y, w, h = region['x'], region['y'], region['w'], region['h']
                 face_crop = frame[y:y+h, x:x+w]
                 faces_info.append((face_crop, (x, y, w, h)))
-
             return faces_info
         except Exception as e:
             print(f"Error during face detection: {e}")
@@ -61,60 +61,76 @@ class SecureFaceRecognition:
         return result[0]['embedding'] if result else None
 
     def find_match(self, new_embedding):
-        """Find best match in the cache using cosine similarity."""
+        """
+        Find best match from cache using cosine similarity.
+        Also checks visa expiry and appends a status field.
+        """
         best_score = -1
-        match_identity = None
-        match_expiry = None
+        match_info = None
 
-        for identity, embeddings in self.embeddings_cache:
-            for encrypted_embedding, expiry in embeddings:
+        for identity_info, embeddings in self.embeddings_cache:
+            for encrypted_embedding, embed_info in embeddings:
                 decrypted = self.decrypt_embedding(encrypted_embedding)
                 score = cosine_similarity([new_embedding], [decrypted])[0][0]
 
                 if score > best_score and score >= self.threshold:
                     best_score = score
-                    match_identity = identity
-                    match_expiry = expiry
+                    match_info = embed_info.copy()
 
-        return (match_identity, match_expiry), best_score
+        if match_info:
+            if match_info["type"] == "visa":
+                expiry_date = datetime.strptime(match_info["expiry"], "%Y-%m-%d")
+                match_info["status"] = (
+                    "Expired Visa" if datetime.now() > expiry_date else "Valid Visa"
+                )
+            else:
+                match_info["status"] = "Resident"
+
+        return match_info, best_score
 
     def add_embedding(self, embedding, identity_info):
-        """Add new encrypted embedding to cache."""
-        identity, expiry = identity_info
+        """
+        Add encrypted embedding to memory and save to cache.
+        identity_info is a dictionary: {
+            'name': str,
+            'type': 'resident' or 'visa',
+            'expiry': 'YYYY-MM-DD' (required for visa)
+        }
+        """
         encrypted = self.encrypt_embedding(embedding)
 
         for entry in self.embeddings_cache:
-            if entry[0] == identity:
-                entry[1].append((encrypted, expiry))
+            if entry[0]["name"] == identity_info["name"]:
+                entry[1].append((encrypted, identity_info))
                 break
         else:
-            self.embeddings_cache.append([identity, [(encrypted, expiry)]])
+            self.embeddings_cache.append([identity_info, [(encrypted, identity_info)]])
 
         self.save_cache()
-        print(f"✅ Added identity: {identity} (Total identities: {len(self.embeddings_cache)})")
+        print(f"✅ Added identity: {identity_info['name']}")
 
     def encrypt_embedding(self, embedding):
-        """Encrypt embedding using Fernet."""
+        """Encrypt face embedding using Fernet."""
         array = np.array(embedding, dtype=np.float32)
         return self.cipher_suite.encrypt(array.tobytes())
 
     def decrypt_embedding(self, encrypted):
-        """Decrypt Fernet-encrypted embedding."""
+        """Decrypt face embedding."""
         decrypted = self.cipher_suite.decrypt(encrypted)
         return np.frombuffer(decrypted, dtype=np.float32)
 
     def save_cache(self):
-        """Persist embedding cache to disk."""
+        """Save encrypted face embeddings to disk."""
         with open(self.cache_file, 'wb') as f:
             pickle.dump(self.embeddings_cache, f)
-        print(f"💾 Saved {len(self.embeddings_cache)} identity(ies) to cache.")
+        print(f"💾 Saved {len(self.embeddings_cache)} identities to cache.")
 
     def load_cache(self):
-        """Load embeddings from disk if available."""
+        """Load face embeddings from disk if available."""
         if os.path.exists(self.cache_file):
             with open(self.cache_file, 'rb') as f:
                 self.embeddings_cache = pickle.load(f)
-            print(f"📂 Loaded {len(self.embeddings_cache)} identity(ies) from cache.")
+            print(f"📂 Loaded {len(self.embeddings_cache)} identities from cache.")
         else:
             print("🚫 No cache file found.")
 
@@ -123,11 +139,11 @@ class SecureFaceRecognition:
         self.embeddings_cache = []
         if os.path.exists(self.cache_file):
             os.remove(self.cache_file)
-        print("🚫 Cache cleared.")
+        print("🗑️ Cache cleared.")
 
     def list_identities(self):
-        """List cached identities."""
-        names = [identity for identity, _ in self.embeddings_cache]
+        """Print list of all unique cached identities."""
+        names = [identity["name"] for identity, _ in self.embeddings_cache]
         if names:
             print(f"🧠 Cached identities: {', '.join(set(names))}")
         else:
