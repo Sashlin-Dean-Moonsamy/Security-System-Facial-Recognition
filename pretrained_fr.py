@@ -47,12 +47,6 @@ class SecureFaceRecognition:
             print(f"Error during face detection: {e}")
             return []
 
-    def preprocess_frame(self, face_img):
-        """Resize and normalize face image for embedding."""
-        resized = cv2.resize(face_img, (160, 160))
-        normalized = resized / 255.0
-        return np.expand_dims(normalized, axis=0)
-
     def embed_face(self, face_img):
         """Generate face embedding using FaceNet."""
         result = DeepFace.represent(
