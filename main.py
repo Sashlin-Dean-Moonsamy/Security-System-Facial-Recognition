@@ -1,6 +1,3 @@
-# -----------------------------
-# main.py
-# -----------------------------
 import cv2
 from datetime import datetime
 from pretrained_fr import SecureFaceRecognition
@@ -22,14 +19,12 @@ while True:
         print("❌ Failed to grab frame.")
         break
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml') \
-        .detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    # Detect all faces in the frame using DeepFace's detectFace method
+    faces_info = face_recognition.detect_faces(frame)
 
-    for (x, y, w, h) in faces:
-        face = frame[y:y+h, x:x+w]
-        processed = face_recognition.preprocess_frame(face)
-        embedding = face_recognition.embed_face(face)
+    for face_img, (x, y, w, h) in faces_info:
+        processed = face_recognition.preprocess_frame(face_img)
+        embedding = face_recognition.embed_face(face_img)
 
         identity_info, dist = face_recognition.find_match(embedding)
         print(f"📏 Similarity score: {dist:.4f}")
@@ -51,13 +46,17 @@ while True:
                     print(f"⚠️ Expiry information for {identity} is not valid.")
 
             text = f"{identity} - {visa_status}"
+        else:
+            text = "Unknown Person"
 
-        # Draw face box and identity
+        # Draw face box and identity on the frame
         cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
         cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
 
     # Display the frame
     cv2.imshow("Face Recognition", frame)
+
+    # Wait for a key press to exit
     key = cv2.waitKey(50) & 0xFF
     if key == ord('q') or cv2.getWindowProperty("Face Recognition", cv2.WND_PROP_VISIBLE) < 1:
         print("👋 Exiting...")
