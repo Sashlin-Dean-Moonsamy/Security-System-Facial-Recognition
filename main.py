@@ -1,44 +1,98 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from tkinter import ttk
 import cv2
 from pretrained_fr import SecureFaceRecognition
 from datetime import datetime
+from PIL import Image, ImageTk
 
 
 class FaceRecognitionApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Secure Face Recognition System")
-        self.root.geometry("400x300")
+        self.root.geometry("800x600")
 
         self.recognizer = SecureFaceRecognition()
 
-        # Create and place widgets in the window
+        self.is_recognizing = False  # Flag to control the video feed
+        self.video_source = 0  # Default webcam source
+
+        # Create and place widgets
         self.create_widgets()
 
     def create_widgets(self):
+        # Video Frame (to display the webcam feed)
+        self.video_frame = tk.Label(self.root)
+        self.video_frame.pack(pady=10)
+
+        # Start Video Button
+        self.start_video_button = tk.Button(self.root, text="Start Camera", command=self.start_video)
+        self.start_video_button.pack(pady=10)
+
         # Add Image Button
         self.add_button = tk.Button(self.root, text="Add Identity", command=self.add_identity)
-        self.add_button.pack(pady=20)
+        self.add_button.pack(pady=10)
 
         # Recognize Image Button
         self.recognize_button = tk.Button(self.root, text="Recognize Face", command=self.recognize_face)
-        self.recognize_button.pack(pady=20)
-
-        # List Identities Button
-        self.list_button = tk.Button(self.root, text="List Identities", command=self.list_identities)
-        self.list_button.pack(pady=20)
-
-        # Clear Cache Button
-        self.clear_button = tk.Button(self.root, text="Clear Cache", command=self.clear_cache)
-        self.clear_button.pack(pady=20)
+        self.recognize_button.pack(pady=10)
 
         # Status label
         self.status_label = tk.Label(self.root, text="", anchor="w", justify=tk.LEFT)
         self.status_label.pack(pady=10, padx=10, fill=tk.X)
 
+    def start_video(self):
+        """Start the webcam feed for real-time face recognition."""
+        self.is_recognizing = True
+        self.capture = cv2.VideoCapture(self.video_source)
+
+        self.update_video_feed()
+
+    def stop_video(self):
+        """Stop the webcam feed."""
+        self.is_recognizing = False
+        if hasattr(self, 'capture'):
+            self.capture.release()
+
+    def update_video_feed(self):
+        """Update the video feed in real-time."""
+        if not self.is_recognizing:
+            return
+
+        ret, frame = self.capture.read()
+        if ret:
+            # Detect faces in the frame
+            faces = self.recognizer.detect_faces(frame)
+
+            for face_img, (x, y, w, h) in faces:
+                # Highlight the detected face
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+                # Get embedding and recognize the identity
+                embedding = self.recognizer.embed_face(face_img)
+                if embedding is not None:
+                    identity, score = self.recognizer.find_match(embedding)
+                    if identity:
+                        # Display name and expiry status
+                        name = identity['name']
+                        status = identity['status']
+                        expiry = identity.get('expiry', 'N/A')
+                        text = f"{name} ({status})"
+                        cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+
+            # Convert the frame to an image for Tkinter
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(frame_rgb)
+            img = ImageTk.PhotoImage(img)
+
+            # Update the video feed in Tkinter window
+            self.video_frame.img_tk = img
+            self.video_frame.config(image=img)
+
+        self.root.after(10, self.update_video_feed)  # Call this method after 10 ms
+
     def add_identity(self):
+        """Add a new identity."""
         # Open file dialog to select an image
         file_path = filedialog.askopenfilename(title="Select Image", filetypes=[("Image Files", "*.jpg;*.png")])
         if not file_path:
@@ -90,6 +144,7 @@ class FaceRecognitionApp:
         messagebox.showinfo("Success", f"Identity '{name}' added successfully!")
 
     def recognize_face(self):
+        """Recognize face from a file image."""
         # Open file dialog to select an image
         file_path = filedialog.askopenfilename(title="Select Image", filetypes=[("Image Files", "*.jpg;*.png")])
         if not file_path:
@@ -123,6 +178,7 @@ class FaceRecognitionApp:
             self.status_label.config(text="No match found.")
 
     def list_identities(self):
+        """List all stored identities."""
         identities = []
         for identity_info, _ in self.recognizer.embeddings_cache:
             identities.append(identity_info["name"])
@@ -134,6 +190,7 @@ class FaceRecognitionApp:
             messagebox.showinfo("Stored Identities", "No identities stored.")
 
     def clear_cache(self):
+        """Clear all stored identities."""
         self.recognizer.clear_cache()
         messagebox.showinfo("Cache Cleared", "All identities have been cleared.")
 
