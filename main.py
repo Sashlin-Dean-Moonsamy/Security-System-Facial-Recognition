@@ -1,68 +1,146 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from tkinter import ttk
 import cv2
-from datetime import datetime
 from pretrained_fr import SecureFaceRecognition
+from datetime import datetime
 
-# Initialize the secure face recognition system
-face_recognition = SecureFaceRecognition()
-face_recognition.load_cache()
-face_recognition.list_identities()
 
-# Start webcam capture
-cap = cv2.VideoCapture(0)
-cv2.namedWindow("Face Recognition")
+class FaceRecognitionApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Secure Face Recognition System")
+        self.root.geometry("400x300")
 
-print("🔍 Starting face recognition... Press 'q' to quit.")
+        self.recognizer = SecureFaceRecognition()
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("❌ Failed to grab frame.")
-        break
+        # Create and place widgets in the window
+        self.create_widgets()
 
-    # Detect all faces in the frame using DeepFace's detectFace method
-    faces_info = face_recognition.detect_faces(frame)
+    def create_widgets(self):
+        # Add Image Button
+        self.add_button = tk.Button(self.root, text="Add Identity", command=self.add_identity)
+        self.add_button.pack(pady=20)
 
-    for face_img, (x, y, w, h) in faces_info:
-        processed = face_recognition.preprocess_frame(face_img)
-        embedding = face_recognition.embed_face(face_img)
+        # Recognize Image Button
+        self.recognize_button = tk.Button(self.root, text="Recognize Face", command=self.recognize_face)
+        self.recognize_button.pack(pady=20)
 
-        identity_info, dist = face_recognition.find_match(embedding)
-        print(f"📏 Similarity score: {dist:.4f}")
+        # List Identities Button
+        self.list_button = tk.Button(self.root, text="List Identities", command=self.list_identities)
+        self.list_button.pack(pady=20)
 
-        if identity_info:
-            identity, expiry = identity_info
-            if expiry == "resident":
-                visa_status = "Resident"
-            else:
-                if isinstance(expiry, str):
-                    try:
-                        expiry_dt = datetime.fromisoformat(expiry)
-                        visa_status = "Valid Visa" if expiry_dt > datetime.now() else "Expired Visa"
-                    except ValueError:
-                        visa_status = "Invalid Expiry Date"
-                        print(f"⚠️ Invalid expiry date format for {identity}. Setting as 'Invalid Expiry Date'.")
-                else:
-                    visa_status = "Unknown Expiry"
-                    print(f"⚠️ Expiry information for {identity} is not valid.")
+        # Clear Cache Button
+        self.clear_button = tk.Button(self.root, text="Clear Cache", command=self.clear_cache)
+        self.clear_button.pack(pady=20)
 
-            text = f"{identity} - {visa_status}"
+        # Status label
+        self.status_label = tk.Label(self.root, text="", anchor="w", justify=tk.LEFT)
+        self.status_label.pack(pady=10, padx=10, fill=tk.X)
+
+    def add_identity(self):
+        # Open file dialog to select an image
+        file_path = filedialog.askopenfilename(title="Select Image", filetypes=[("Image Files", "*.jpg;*.png")])
+        if not file_path:
+            return
+
+        # Get user input for identity details
+        name = simpledialog.askstring("Identity", "Enter Name:")
+        if not name:
+            messagebox.showerror("Error", "Name cannot be empty!")
+            return
+
+        identity_type = simpledialog.askstring("Identity Type", "Enter Type (resident/visa):")
+        if identity_type not in ["resident", "visa"]:
+            messagebox.showerror("Error", "Type must be 'resident' or 'visa'!")
+            return
+
+        expiry = None
+        if identity_type == "visa":
+            expiry = simpledialog.askstring("Visa Expiry", "Enter Expiry Date (YYYY-MM-DD):")
+            try:
+                datetime.strptime(expiry, "%Y-%m-%d")
+            except ValueError:
+                messagebox.showerror("Error", "Expiry must be in YYYY-MM-DD format!")
+                return
+
+        # Read and process image
+        img = cv2.imread(file_path)
+        if img is None:
+            messagebox.showerror("Error", "Unable to load image!")
+            return
+
+        faces = self.recognizer.detect_faces(img)
+        if not faces:
+            messagebox.showerror("Error", "No face found in the image!")
+            return
+
+        face_img, _ = faces[0]
+        embedding = self.recognizer.embed_face(face_img)
+        if embedding is None:
+            messagebox.showerror("Error", "Embedding failed!")
+            return
+
+        identity_info = {
+            "name": name,
+            "type": identity_type,
+            "expiry": expiry
+        }
+        self.recognizer.add_embedding(embedding, identity_info)
+        messagebox.showinfo("Success", f"Identity '{name}' added successfully!")
+
+    def recognize_face(self):
+        # Open file dialog to select an image
+        file_path = filedialog.askopenfilename(title="Select Image", filetypes=[("Image Files", "*.jpg;*.png")])
+        if not file_path:
+            return
+
+        # Read and process image
+        img = cv2.imread(file_path)
+        if img is None:
+            messagebox.showerror("Error", "Unable to load image!")
+            return
+
+        faces = self.recognizer.detect_faces(img)
+        if not faces:
+            messagebox.showerror("Error", "No face detected!")
+            return
+
+        face_img, _ = faces[0]
+        embedding = self.recognizer.embed_face(face_img)
+        if embedding is None:
+            messagebox.showerror("Error", "Embedding failed!")
+            return
+
+        identity, score = self.recognizer.find_match(embedding)
+        if identity:
+            status_msg = f"Name: {identity['name']}\nType: {identity['type']}\nStatus: {identity['status']}\n"
+            if 'expiry' in identity:
+                status_msg += f"Expiry Date: {identity['expiry']}\n"
+            status_msg += f"Similarity Score: {score:.4f}"
+            self.status_label.config(text=status_msg)
         else:
-            text = "Unknown Person"
+            self.status_label.config(text="No match found.")
 
-        # Draw face box and identity on the frame
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 255), 2)
+    def list_identities(self):
+        identities = []
+        for identity_info, _ in self.recognizer.embeddings_cache:
+            identities.append(identity_info["name"])
+        
+        if identities:
+            identities_str = "\n".join(set(identities))
+            messagebox.showinfo("Stored Identities", f"Stored Identities:\n{identities_str}")
+        else:
+            messagebox.showinfo("Stored Identities", "No identities stored.")
 
-    # Display the frame
-    cv2.imshow("Face Recognition", frame)
+    def clear_cache(self):
+        self.recognizer.clear_cache()
+        messagebox.showinfo("Cache Cleared", "All identities have been cleared.")
 
-    # Wait for a key press to exit
-    key = cv2.waitKey(50) & 0xFF
-    if key == ord('q') or cv2.getWindowProperty("Face Recognition", cv2.WND_PROP_VISIBLE) < 1:
-        print("👋 Exiting...")
-        break
 
-# Cleanup
-cap.release()
-face_recognition.save_cache()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    import tkinter.simpledialog as simpledialog
+
+    root = tk.Tk()
+    app = FaceRecognitionApp(root)
+    root.mainloop()
