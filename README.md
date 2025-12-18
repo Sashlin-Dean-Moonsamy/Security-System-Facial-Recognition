@@ -21,7 +21,7 @@ A secure facial recognition system that can identify individuals and verify thei
 
 1. Clone the repository:
 ```bash
-git clone [repository-url]
+git clone Sashlin-Dean-Moonsamy/Security-System-Facial-Recognition
 cd Security-System-Facial-Recog
 ```
 
